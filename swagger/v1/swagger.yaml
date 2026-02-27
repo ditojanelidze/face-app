@@ -1,0 +1,2151 @@
+openapi: 3.0.1
+info:
+  title: Nightlife Venue Verification API
+  description: |
+    API for digital guest verification and face control at bars and clubs.
+
+    ## Authentication
+
+    This API uses JWT Bearer tokens for authentication. Include the token in the Authorization header:
+    ```
+    Authorization: Bearer <access_token>
+    ```
+
+    ### User Authentication Flow
+    1. Request OTP via `/api/v1/auth/request_otp`
+    2. Register or Login with the OTP code
+    3. Use the returned `access_token` for authenticated requests
+    4. Use `refresh_token` to get new access tokens when they expire
+
+    ### Admin Authentication Flow
+    1. Login via `/api/v1/admin/auth/login` with email and password
+    2. Use the returned `access_token` for authenticated admin requests
+  version: v1
+  contact:
+    name: API Support
+
+servers:
+  - url: http://localhost:3000
+    description: Development server
+
+tags:
+  - name: User Authentication
+    description: OTP-based passwordless authentication for users
+  - name: User Profile
+    description: User profile management and file uploads
+  - name: Venues
+    description: Browse venues and events (for users)
+  - name: Approvals
+    description: Request and manage venue approvals (for users)
+  - name: Admin Authentication
+    description: Admin login and registration
+  - name: Admin Venues
+    description: Venue management for admins
+  - name: Admin Events
+    description: Event management for admins
+  - name: Admin Approvals
+    description: Review and manage approval requests
+  - name: QR Scanner
+    description: QR code validation at venue entry
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Error message"
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        first_name:
+          type: string
+          example: "John"
+        last_name:
+          type: string
+          example: "Doe"
+        phone_number:
+          type: string
+          example: "+15551234567"
+        phone_verified:
+          type: boolean
+          example: true
+        profile_complete:
+          type: boolean
+          example: false
+        social_links:
+          type: object
+          properties:
+            facebook:
+              type: string
+              nullable: true
+            instagram:
+              type: string
+              nullable: true
+            linkedin:
+              type: string
+              nullable: true
+        profile_photo_url:
+          type: string
+          nullable: true
+        id_card_image_url:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    VenueAdmin:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        email:
+          type: string
+          format: email
+          example: "admin@venue.com"
+        first_name:
+          type: string
+          example: "John"
+        last_name:
+          type: string
+          example: "Smith"
+        created_at:
+          type: string
+          format: date-time
+
+    Venue:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Sky Bar"
+        description:
+          type: string
+          example: "Rooftop bar with stunning city views"
+        address:
+          type: string
+          example: "123 Main Street, 20th Floor"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    VenueWithStats:
+      allOf:
+        - $ref: '#/components/schemas/Venue'
+        - type: object
+          properties:
+            stats:
+              type: object
+              properties:
+                total_events:
+                  type: integer
+                upcoming_events:
+                  type: integer
+                pending_approvals:
+                  type: integer
+                approved_users:
+                  type: integer
+
+    Event:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Friday Night Live"
+        description:
+          type: string
+          example: "Live DJ performance"
+        date_time:
+          type: string
+          format: date-time
+        allow_global_approval:
+          type: boolean
+          example: true
+        upcoming:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    EventWithStats:
+      allOf:
+        - $ref: '#/components/schemas/Event'
+        - type: object
+          properties:
+            stats:
+              type: object
+              properties:
+                pending_approvals:
+                  type: integer
+                approved_users:
+                  type: integer
+                rejected_users:
+                  type: integer
+
+    Approval:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        venue:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+        event:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+            date_time:
+              type: string
+              format: date-time
+        approval_type:
+          type: string
+          enum: [global, event_specific]
+          example: "global"
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+          example: "pending"
+        active:
+          type: boolean
+          example: true
+        qr_used:
+          type: boolean
+          example: false
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    ApprovalWithQR:
+      allOf:
+        - $ref: '#/components/schemas/Approval'
+        - type: object
+          properties:
+            qr_code_data:
+              type: string
+              example: "550e8400-e29b-41d4-a716-446655440000"
+
+    ApprovalWithUserDetails:
+      allOf:
+        - $ref: '#/components/schemas/Approval'
+        - type: object
+          properties:
+            user:
+              type: object
+              properties:
+                id:
+                  type: integer
+                full_name:
+                  type: string
+                phone_number:
+                  type: string
+            user_details:
+              $ref: '#/components/schemas/User'
+
+    AuthTokens:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiJ9..."
+        refresh_token:
+          type: string
+          example: "a1b2c3d4e5f6..."
+
+    ScanResult:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        message:
+          type: string
+        error:
+          type: string
+        user:
+          type: object
+          properties:
+            id:
+              type: integer
+            full_name:
+              type: string
+            profile_photo_url:
+              type: string
+              nullable: true
+        approval:
+          type: object
+          properties:
+            id:
+              type: integer
+            type:
+              type: string
+            event:
+              type: object
+              nullable: true
+
+paths:
+  # ==================== USER AUTHENTICATION ====================
+  /api/v1/auth/request_otp:
+    post:
+      tags:
+        - User Authentication
+      summary: Request OTP code
+      description: Send a one-time password to the specified phone number via SMS
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - auth
+              properties:
+                auth:
+                  type: object
+                  required:
+                    - phone_number
+                  properties:
+                    phone_number:
+                      type: string
+                      example: "+15551234567"
+                      description: Phone number in E.164 format
+      responses:
+        '200':
+          description: OTP sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "OTP sent successfully"
+        '422':
+          description: Failed to send OTP
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/auth/register:
+    post:
+      tags:
+        - User Authentication
+      summary: Register new user
+      description: Register a new user with phone verification via OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - auth
+              properties:
+                auth:
+                  type: object
+                  required:
+                    - phone_number
+                    - code
+                    - first_name
+                    - last_name
+                  properties:
+                    phone_number:
+                      type: string
+                      example: "+15551234567"
+                    code:
+                      type: string
+                      example: "123456"
+                      description: 6-digit OTP code
+                    first_name:
+                      type: string
+                      example: "John"
+                    last_name:
+                      type: string
+                      example: "Doe"
+      responses:
+        '201':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Registration successful"
+                  user:
+                    $ref: '#/components/schemas/User'
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+        '422':
+          description: Registration failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/auth/login:
+    post:
+      tags:
+        - User Authentication
+      summary: Login user
+      description: Login an existing user with phone verification via OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - auth
+              properties:
+                auth:
+                  type: object
+                  required:
+                    - phone_number
+                    - code
+                  properties:
+                    phone_number:
+                      type: string
+                      example: "+15551234567"
+                    code:
+                      type: string
+                      example: "123456"
+                    device_info:
+                      type: string
+                      example: "iPhone 14 Pro"
+                      description: Optional device information
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Login successful"
+                  user:
+                    $ref: '#/components/schemas/User'
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+        '401':
+          description: Login failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/auth/refresh:
+    post:
+      tags:
+        - User Authentication
+      summary: Refresh access token
+      description: Get a new access token using a valid refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - auth
+              properties:
+                auth:
+                  type: object
+                  required:
+                    - refresh_token
+                  properties:
+                    refresh_token:
+                      type: string
+                      example: "a1b2c3d4e5f6..."
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '401':
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/auth/logout:
+    delete:
+      tags:
+        - User Authentication
+      summary: Logout user
+      description: Invalidate the refresh token and end the session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - auth
+              properties:
+                auth:
+                  type: object
+                  required:
+                    - refresh_token
+                  properties:
+                    refresh_token:
+                      type: string
+      responses:
+        '200':
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Logged out successfully"
+
+  /api/v1/auth/check_phone:
+    get:
+      tags:
+        - User Authentication
+      summary: Check if phone number is registered
+      description: Check whether a phone number already has an account
+      parameters:
+        - name: phone_number
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "+15551234567"
+      responses:
+        '200':
+          description: Phone check result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exists:
+                    type: boolean
+                    example: true
+
+  # ==================== USER PROFILE ====================
+  /api/v1/profile:
+    get:
+      tags:
+        - User Profile
+      summary: Get current user profile
+      description: Retrieve the authenticated user's profile information
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Profile retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    patch:
+      tags:
+        - User Profile
+      summary: Update user profile
+      description: Update the authenticated user's profile information
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                profile:
+                  type: object
+                  properties:
+                    first_name:
+                      type: string
+                    last_name:
+                      type: string
+                    facebook_url:
+                      type: string
+                      example: "https://facebook.com/johndoe"
+                    instagram_url:
+                      type: string
+                      example: "https://instagram.com/johndoe"
+                    linkedin_url:
+                      type: string
+                      example: "https://linkedin.com/in/johndoe"
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/profile/upload_photo:
+    post:
+      tags:
+        - User Profile
+      summary: Upload profile photo
+      description: Upload a profile photo for the authenticated user
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - photo
+              properties:
+                photo:
+                  type: string
+                  format: binary
+                  description: Profile photo image file (JPEG, PNG)
+      responses:
+        '200':
+          description: Photo uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Photo uploaded successfully"
+                  photo_url:
+                    type: string
+        '400':
+          description: Photo is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/profile/upload_id_card:
+    post:
+      tags:
+        - User Profile
+      summary: Upload ID card image
+      description: Upload a government-issued ID card image for verification
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - id_card
+              properties:
+                id_card:
+                  type: string
+                  format: binary
+                  description: ID card image file (JPEG, PNG)
+      responses:
+        '200':
+          description: ID card uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "ID card uploaded successfully"
+                  id_card_url:
+                    type: string
+        '400':
+          description: ID card is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/profile/approvals:
+    get:
+      tags:
+        - User Profile
+      summary: Get all approvals
+      description: Get all approval requests for the authenticated user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Approvals list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  approvals:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Approval'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/profile/active_approvals:
+    get:
+      tags:
+        - User Profile
+      summary: Get active approvals
+      description: Get only active (approved and not expired) approvals
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Active approvals list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  approvals:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Approval'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ==================== VENUES (USER) ====================
+  /api/v1/venues:
+    get:
+      tags:
+        - Venues
+      summary: List all venues
+      description: Get a list of all available venues
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Venues list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  venues:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Venue'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/venues/{id}:
+    get:
+      tags:
+        - Venues
+      summary: Get venue details
+      description: Get detailed information about a specific venue including upcoming events
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: Venue details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  venue:
+                    allOf:
+                      - $ref: '#/components/schemas/Venue'
+                      - type: object
+                        properties:
+                          upcoming_events:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Event'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Venue not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/venues/{id}/events:
+    get:
+      tags:
+        - Venues
+      summary: Get venue events
+      description: Get upcoming events for a specific venue
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: Events list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Venue not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ==================== APPROVALS (USER) ====================
+  /api/v1/approvals:
+    get:
+      tags:
+        - Approvals
+      summary: List user approvals
+      description: Get all approval requests for the authenticated user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Approvals list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  approvals:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Approval'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags:
+        - Approvals
+      summary: Request approval
+      description: |
+        Submit an approval request for a venue.
+
+        **Note:** User must have completed their profile (uploaded photo and ID card) before requesting approval.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - approval
+              properties:
+                approval:
+                  type: object
+                  required:
+                    - venue_id
+                    - approval_type
+                  properties:
+                    venue_id:
+                      type: integer
+                      example: 1
+                    event_id:
+                      type: integer
+                      example: 1
+                      description: Required for event_specific approval type
+                    approval_type:
+                      type: string
+                      enum: [global, event_specific]
+                      example: "global"
+      responses:
+        '201':
+          description: Approval request submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Approval request submitted"
+                  approval:
+                    $ref: '#/components/schemas/Approval'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Profile incomplete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/approvals/{id}:
+    get:
+      tags:
+        - Approvals
+      summary: Get approval details
+      description: Get details of a specific approval including QR code data if approved
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: Approval details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  approval:
+                    $ref: '#/components/schemas/ApprovalWithQR'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Approval not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/approvals/{id}/qr_code:
+    get:
+      tags:
+        - Approvals
+      summary: Get QR code
+      description: Get the QR code for an approved request
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [svg, png, data]
+            default: svg
+          description: QR code format (svg, png, or raw data)
+      responses:
+        '200':
+          description: QR code
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  qr_code_svg:
+                    type: string
+                    description: SVG representation of QR code
+                  qr_code_data:
+                    type: string
+                    description: Raw QR code data
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Approval not yet granted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Approval not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ==================== ADMIN AUTHENTICATION ====================
+  /api/v1/admin/auth/register:
+    post:
+      tags:
+        - Admin Authentication
+      summary: Register venue admin
+      description: Register a new venue admin account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - auth
+              properties:
+                auth:
+                  type: object
+                  required:
+                    - email
+                    - password
+                    - first_name
+                    - last_name
+                  properties:
+                    email:
+                      type: string
+                      format: email
+                      example: "admin@venue.com"
+                    password:
+                      type: string
+                      format: password
+                      example: "securepassword123"
+                      minLength: 8
+                    password_confirmation:
+                      type: string
+                      format: password
+                    first_name:
+                      type: string
+                      example: "John"
+                    last_name:
+                      type: string
+                      example: "Smith"
+      responses:
+        '201':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Registration successful"
+                  admin:
+                    $ref: '#/components/schemas/VenueAdmin'
+                  access_token:
+                    type: string
+        '422':
+          description: Registration failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/admin/auth/login:
+    post:
+      tags:
+        - Admin Authentication
+      summary: Admin login
+      description: Login as a venue admin with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - auth
+              properties:
+                auth:
+                  type: object
+                  required:
+                    - email
+                    - password
+                  properties:
+                    email:
+                      type: string
+                      format: email
+                      example: "admin@skybar.com"
+                    password:
+                      type: string
+                      format: password
+                      example: "password123"
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Login successful"
+                  admin:
+                    $ref: '#/components/schemas/VenueAdmin'
+                  access_token:
+                    type: string
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ==================== ADMIN VENUES ====================
+  /api/v1/admin/venues:
+    get:
+      tags:
+        - Admin Venues
+      summary: List admin's venues
+      description: Get all venues owned by the authenticated admin
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Venues list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  venues:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Venue'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags:
+        - Admin Venues
+      summary: Create venue
+      description: Create a new venue
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - venue
+              properties:
+                venue:
+                  type: object
+                  required:
+                    - name
+                  properties:
+                    name:
+                      type: string
+                      example: "New Venue"
+                    description:
+                      type: string
+                      example: "A great place to party"
+                    address:
+                      type: string
+                      example: "123 Party Street"
+      responses:
+        '201':
+          description: Venue created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Venue created successfully"
+                  venue:
+                    $ref: '#/components/schemas/Venue'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/admin/venues/{id}:
+    get:
+      tags:
+        - Admin Venues
+      summary: Get venue details
+      description: Get detailed information about a specific venue including stats
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: Venue details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  venue:
+                    $ref: '#/components/schemas/VenueWithStats'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Venue not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    patch:
+      tags:
+        - Admin Venues
+      summary: Update venue
+      description: Update venue information
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                venue:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    description:
+                      type: string
+                    address:
+                      type: string
+      responses:
+        '200':
+          description: Venue updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  venue:
+                    $ref: '#/components/schemas/Venue'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Venue not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Admin Venues
+      summary: Delete venue
+      description: Delete a venue and all associated events and approvals
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: Venue deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Venue deleted successfully"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Venue not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ==================== ADMIN EVENTS ====================
+  /api/v1/admin/venues/{venue_id}/events:
+    get:
+      tags:
+        - Admin Events
+      summary: List venue events
+      description: Get all events for a specific venue
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: venue_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: Events list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Venue not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags:
+        - Admin Events
+      summary: Create event
+      description: Create a new event for a venue
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: venue_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - event
+              properties:
+                event:
+                  type: object
+                  required:
+                    - name
+                    - date_time
+                  properties:
+                    name:
+                      type: string
+                      example: "Saturday Night Party"
+                    description:
+                      type: string
+                      example: "The best party in town"
+                    date_time:
+                      type: string
+                      format: date-time
+                      example: "2024-12-31T22:00:00Z"
+                    allow_global_approval:
+                      type: boolean
+                      default: true
+                      description: Whether users with global approval can attend
+      responses:
+        '201':
+          description: Event created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Event created successfully"
+                  event:
+                    $ref: '#/components/schemas/Event'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Venue not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/admin/venues/{venue_id}/events/upcoming:
+    get:
+      tags:
+        - Admin Events
+      summary: List upcoming events
+      description: Get only upcoming events for a venue
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: venue_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: Upcoming events list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Venue not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/admin/venues/{venue_id}/events/{id}:
+    get:
+      tags:
+        - Admin Events
+      summary: Get event details
+      description: Get detailed information about a specific event including stats
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: venue_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: Event details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  event:
+                    $ref: '#/components/schemas/EventWithStats'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    patch:
+      tags:
+        - Admin Events
+      summary: Update event
+      description: Update event information
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: venue_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    description:
+                      type: string
+                    date_time:
+                      type: string
+                      format: date-time
+                    allow_global_approval:
+                      type: boolean
+      responses:
+        '200':
+          description: Event updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  event:
+                    $ref: '#/components/schemas/Event'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Admin Events
+      summary: Delete event
+      description: Delete an event and all associated approvals
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: venue_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: Event deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Event deleted successfully"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ==================== ADMIN APPROVALS ====================
+  /api/v1/admin/venues/{venue_id}/approvals:
+    get:
+      tags:
+        - Admin Approvals
+      summary: List venue approvals
+      description: Get all approval requests for a venue with optional filtering
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: venue_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, approved, rejected]
+          description: Filter by approval status
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [global, event_specific]
+          description: Filter by approval type
+      responses:
+        '200':
+          description: Approvals list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  approvals:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApprovalWithUserDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Venue not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/admin/venues/{venue_id}/approvals/pending:
+    get:
+      tags:
+        - Admin Approvals
+      summary: List pending approvals
+      description: Get all pending approval requests for a venue
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: venue_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: Pending approvals list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  approvals:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApprovalWithUserDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Venue not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/admin/venues/{venue_id}/approvals/{id}:
+    get:
+      tags:
+        - Admin Approvals
+      summary: Get approval details
+      description: Get detailed information about a specific approval including full user profile
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: venue_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: Approval details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  approval:
+                    $ref: '#/components/schemas/ApprovalWithUserDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Approval not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/admin/venues/{venue_id}/approvals/{id}/approve:
+    post:
+      tags:
+        - Admin Approvals
+      summary: Approve user
+      description: Approve a pending approval request
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: venue_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expires_at:
+                  type: string
+                  format: date-time
+                  description: Optional expiration date for the approval
+                  example: "2024-12-31T23:59:59Z"
+      responses:
+        '200':
+          description: User approved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "User approved successfully"
+                  approval:
+                    $ref: '#/components/schemas/Approval'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Approval not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Approval not in pending state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/admin/venues/{venue_id}/approvals/{id}/reject:
+    post:
+      tags:
+        - Admin Approvals
+      summary: Reject user
+      description: Reject a pending approval request
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: venue_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: User rejected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "User rejected"
+                  approval:
+                    $ref: '#/components/schemas/Approval'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Approval not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Approval not in pending state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ==================== QR SCANNER ====================
+  /api/v1/admin/venues/{venue_id}/scan:
+    post:
+      tags:
+        - QR Scanner
+      summary: Scan and validate QR code
+      description: |
+        Scan a QR code at venue entry and validate it for entry.
+
+        This endpoint will:
+        - Verify the QR code is valid and belongs to this venue
+        - Check if the approval is active (approved, not expired)
+        - For event-specific approvals, verify the event matches (if specified)
+        - For global approvals at events that don't allow them, deny entry
+        - Mark the QR code as used (single-use by default)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: venue_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - qr_code_data
+              properties:
+                qr_code_data:
+                  type: string
+                  example: "550e8400-e29b-41d4-a716-446655440000"
+                  description: The UUID data from the scanned QR code
+                event_id:
+                  type: integer
+                  example: 1
+                  description: Optional event ID to validate against
+                allow_multiple_scans:
+                  type: string
+                  enum: ["true", "false"]
+                  description: Allow QR to be scanned multiple times
+      responses:
+        '200':
+          description: Scan result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanResult'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Venue not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/admin/venues/{venue_id}/validate:
+    post:
+      tags:
+        - QR Scanner
+      summary: Validate QR code (preview)
+      description: Validate a QR code without marking it as used. Useful for previewing entry status.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: venue_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - qr_code_data
+              properties:
+                qr_code_data:
+                  type: string
+                  example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  approval:
+                    type: object
+                    nullable: true
+                    properties:
+                      id:
+                        type: integer
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      qr_used:
+                        type: boolean
+                      user:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          full_name:
+                            type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Venue not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
