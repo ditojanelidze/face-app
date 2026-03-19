@@ -45,7 +45,7 @@ gem "rqrcode"
 gem "twilio-ruby"
 
 # BCrypt for secure password hashing (venue admin accounts)
-gem "bcrypt", "~> 3.1.7"
+gem "bcrypt", "~> 3.1.22"
 
 # Swagger/OpenAPI documentation
 gem "rswag-api"
